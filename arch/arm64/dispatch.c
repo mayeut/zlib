@@ -11,6 +11,7 @@
 /* flags definitions */
 #define ZL_INITIALIZED 0x0001U
 #define ZL_NEON        0x0002U
+#define ZL_CRYPTO      0x0004U
 
 local unsigned int zl_get_feature_flags_once OF(());
 local unsigned int zl_get_feature_flags OF(());
@@ -32,7 +33,7 @@ local unsigned int zl_get_feature_flags_once()
 {
   unsigned int result = ZL_INITIALIZED;
 
-	result |= ZL_NEON;
+	result |= ZL_NEON | ZL_CRYPTO;
 
   return result;
 }
@@ -89,20 +90,23 @@ local uLong zl_crc32_dispatch_init(crc, buf, len)
 	uInt len;
 {
   zl_crc32_func function = crc32_generic;
-  //unsigned int features = zl_get_feature_flags();
+  unsigned int features = zl_get_feature_flags();
 
+	if ((features & (ZL_NEON | ZL_CRYPTO)) == (ZL_NEON | ZL_CRYPTO)) {
+		function = crc32_crypto;
+	}
   /* TODO atomic */
   zl_crc32_dispatch = function;
   return function(crc, buf, len);
 }
 
-ZLIB_INTERNAL uLong crc32_dispatch(adler, buf, len)
-	uLong adler;
+ZLIB_INTERNAL uLong crc32_dispatch(crc, buf, len)
+	uLong crc;
 	const Bytef *buf;
 	uInt len;
 {
   /* TODO atomic read */
-  return zl_crc32_dispatch(adler, buf, len);
+  return zl_crc32_dispatch(crc, buf, len);
 }
 
 

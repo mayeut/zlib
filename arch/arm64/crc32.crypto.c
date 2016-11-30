@@ -20,7 +20,6 @@
 
 #include <inttypes.h>
 #include <arm_neon.h>
-#include <arm_acle.h>
 
 local void fold128(uint8x16_t *xmm_crc0)
 {
@@ -60,12 +59,12 @@ local unsigned long crc_fold_128to32(uint8x16_t xmm_crc0)
 
     x_tmp0   = vreinterpretq_u8_p128(vmull_p64((poly64_t)vget_low_p64(vreinterpretq_p64_u8(xmm_crc0)), (poly64_t)crc_fold.val[0]));
 
-    xmm_crc0 = vreinterpretq_u8_u64(vzip1q_u64(vreinterpretq_u64_u8(xmm_crc0), vdupq_n_u64(0U)));
+    xmm_crc0 = vextq_u8(xmm_crc0, vdupq_n_u8(0U), 8);
     xmm_crc0 = veorq_u8(xmm_crc0, x_tmp0);
 
     x_tmp0 = vreinterpretq_u8_u32(vcopyq_lane_u32(vdupq_n_u32(0U), 0, vget_low_u32(vreinterpretq_u32_u8(xmm_crc0)), 0));
 
-    xmm_crc0 = vreinterpretq_u8_u64(vshrq_n_u64(vreinterpretq_u64_u8(xmm_crc0), 32));
+    xmm_crc0 = vextq_u8(xmm_crc0, vdupq_n_u8(0U), 4);
     x_tmp0   = vreinterpretq_u8_p128(vmull_p64((poly64_t)vget_low_p64(vreinterpretq_p64_u8(x_tmp0)), (poly64_t)crc_fold.val[1]));
     xmm_crc0 = veorq_u8(xmm_crc0, x_tmp0);
 
