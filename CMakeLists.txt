@@ -121,7 +121,15 @@ set(ZLIB_SRCS
     trees.c
     uncompr.c
     zutil.c
+    arch/x86/dispatch.c
+    arch/x86/adler32.sse2.c
+    arch/x86/adler32.avx2.c
+    arch/x86/crc32.pclmulqdq.c
+    arch/x86/fill_window.sse2.c
 )
+
+set_property(SOURCE arch/x86/crc32.pclmulqdq.c APPEND_STRING PROPERTY COMPILE_FLAGS " -mpclmul")
+set_property(SOURCE arch/x86/adler32.avx2.c APPEND_STRING PROPERTY COMPILE_FLAGS " -mavx2")
 
 if(NOT MINGW)
     set(ZLIB_DLL_SRCS
@@ -236,6 +244,9 @@ add_test(example example)
 
 add_executable(minigzip test/minigzip.c)
 target_link_libraries(minigzip zlib)
+
+add_executable(bench test/bench.c)
+target_link_libraries(bench zlibstatic)
 
 if(HAVE_OFF64_T)
     add_executable(example64 test/example.c)

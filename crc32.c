@@ -41,7 +41,7 @@
                         const unsigned char FAR *, unsigned));
    local unsigned long crc32_big OF((unsigned long,
                         const unsigned char FAR *, unsigned));
-#  define TBLS 8
+#  define TBLS 32
 #else
 #  define TBLS 1
 #endif /* BYFOUR */
@@ -121,10 +121,10 @@ local void make_crc_table()
         for (n = 0; n < 256; n++) {
             c = crc_table[0][n];
             crc_table[4][n] = ZSWAP32(c);
-            for (k = 1; k < 4; k++) {
+            for (k = 1; k < 16; k++) {
                 c = crc_table[0][c & 0xff] ^ (c >> 8);
                 crc_table[k][n] = c;
-                crc_table[k + 4][n] = ZSWAP32(c);
+                crc_table[k + 16][n] = ZSWAP32(c);
             }
         }
 #endif /* BYFOUR */
@@ -151,7 +151,7 @@ local void make_crc_table()
         write_table(out, crc_table[0]);
 #  ifdef BYFOUR
         fprintf(out, "#ifdef BYFOUR\n");
-        for (k = 1; k < 8; k++) {
+        for (k = 1; k < 32; k++) {
             fprintf(out, "  },\n  {\n");
             write_table(out, crc_table[k]);
         }
@@ -201,10 +201,10 @@ const z_crc_t FAR * ZEXPORT get_crc_table()
 #define DO8 DO1; DO1; DO1; DO1; DO1; DO1; DO1; DO1
 
 /* ========================================================================= */
-unsigned long ZEXPORT crc32(crc, buf, len)
-    unsigned long crc;
-    const unsigned char FAR *buf;
-    uInt len;
+ZLIB_INTERNAL uLong crc32_generic(crc, buf, len)
+uLong crc;
+const Bytef *buf;
+uInt len;
 {
     if (buf == Z_NULL) return 0UL;
 
@@ -235,13 +235,65 @@ unsigned long ZEXPORT crc32(crc, buf, len)
     return crc ^ 0xffffffffUL;
 }
 
+ZLIB_INTERNAL uLong crc32_dispatch OF((uLong crc, const Bytef *buf, uInt len));
+
+uLong ZEXPORT crc32(crc, buf, len)
+uLong crc;
+const Bytef *buf;
+uInt len;
+{
+#if 1
+	return crc32_dispatch(crc, buf, len);
+#else
+	return crc32_generic(crc, buf, len);
+#endif
+}
+
 #ifdef BYFOUR
 
 /* ========================================================================= */
 #define DOLIT4 c ^= *buf4++; \
         c = crc_table[3][c & 0xff] ^ crc_table[2][(c >> 8) & 0xff] ^ \
             crc_table[1][(c >> 16) & 0xff] ^ crc_table[0][c >> 24]
-#define DOLIT32 DOLIT4; DOLIT4; DOLIT4; DOLIT4; DOLIT4; DOLIT4; DOLIT4; DOLIT4
+
+#define DOLIT8 { \
+        z_crc_t one   = *buf4++ ^ c; \
+        z_crc_t two   = *buf4++; \
+        c  = crc_table[ 0][(two >> 24) & 0xFF] ^ \
+             crc_table[ 1][(two >> 16) & 0xFF] ^ \
+             crc_table[ 2][(two >>  8) & 0xFF] ^ \
+             crc_table[ 3][ two        & 0xFF] ^ \
+             crc_table[ 4][(one >> 24) & 0xFF] ^ \
+             crc_table[ 5][(one >> 16) & 0xFF] ^ \
+             crc_table[ 6][(one >>  8) & 0xFF] ^ \
+             crc_table[ 7][ one        & 0xFF]; \
+        }
+#define DOLIT32 DOLIT8; DOLIT8; DOLIT8; DOLIT8
+
+#define DOLIT16 { \
+        z_crc_t one   = *buf4++ ^ c; \
+        z_crc_t two   = *buf4++; \
+        z_crc_t three = *buf4++; \
+        z_crc_t four  = *buf4++; \
+        c  = crc_table[ 0][(four  >> 24) & 0xFF] ^ \
+             crc_table[ 1][(four  >> 16) & 0xFF] ^ \
+             crc_table[ 2][(four  >>  8) & 0xFF] ^ \
+             crc_table[ 3][ four         & 0xFF] ^ \
+             crc_table[ 4][(three >> 24) & 0xFF] ^ \
+             crc_table[ 5][(three >> 16) & 0xFF] ^ \
+             crc_table[ 6][(three >>  8) & 0xFF] ^ \
+             crc_table[ 7][ three        & 0xFF] ^ \
+             crc_table[ 8][(two   >> 24) & 0xFF] ^ \
+             crc_table[ 9][(two   >> 16) & 0xFF] ^ \
+             crc_table[10][(two   >>  8) & 0xFF] ^ \
+             crc_table[11][ two          & 0xFF] ^ \
+             crc_table[12][(one   >> 24) & 0xFF] ^ \
+             crc_table[13][(one   >> 16) & 0xFF] ^ \
+             crc_table[14][(one   >>  8) & 0xFF] ^ \
+             crc_table[15][ one          & 0xFF]; \
+        }
+
+#define DOLIT64 DOLIT16; DOLIT16; DOLIT16; DOLIT16
 
 /* ========================================================================= */
 local unsigned long crc32_little(crc, buf, len)
@@ -254,20 +306,33 @@ local unsigned long crc32_little(crc, buf, len)
 
     c = (z_crc_t)crc;
     c = ~c;
+
     while (len && ((ptrdiff_t)buf & 3)) {
         c = crc_table[0][(c ^ *buf++) & 0xff] ^ (c >> 8);
         len--;
     }
 
     buf4 = (const z_crc_t FAR *)(const void FAR *)buf;
-    while (len >= 32) {
-        DOLIT32;
-        len -= 32;
+
+#if 0
+    while (len >= 64) {
+        DOLIT64;
+        len -= 64;
     }
-    while (len >= 4) {
+#endif
+    while (len >= 16) {
+        DOLIT4;
+        DOLIT4;
+        DOLIT4;
+        DOLIT4;
+        len -= 16;
+    }
+
+    if (len & ~3U) do {
         DOLIT4;
         len -= 4;
-    }
+    } while (len >= 4);
+
     buf = (const unsigned char FAR *)buf4;
 
     if (len) do {
