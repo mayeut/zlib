@@ -155,11 +155,11 @@ ZLIB_INTERNAL uLong adler32_neon(iadler, buf, len)
 
             src_0     = vld1_u8_x2(buf +  0);
 
-            adler_0 = vaddl_u8(src_0.val[0], src_0.val[0]);
+            adler_0 = vaddl_u8(src_0.val[0], src_0.val[1]);
             adlerx4 = vpaddlq_u16(adler_0);
 
-            sum2_0 = vmull_u8(src_0.val[0], vget_low_u8(c_sum2.val[0]));
-            sum2_1 = vmull_u8(src_0.val[1], vget_high_u8(c_sum2.val[0]));
+            sum2_0 = vmull_u8(src_0.val[0], vget_low_u8(c_sum2.val[1]));
+            sum2_1 = vmull_u8(src_0.val[1], vget_high_u8(c_sum2.val[1]));
             sum2_0 = vaddq_u16(sum2_0, sum2_1);
             sum2x4 = vpaddlq_u16(sum2_0);
 
