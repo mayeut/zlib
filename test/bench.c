@@ -57,6 +57,7 @@ z_timediff_sec (z_timespec *start, z_timespec *end)
 
 int main(int argc, char** argv)
 {
+	int result = 0;
 	static Byte chunk[maxChunkSize];
 	size_t i, j, chunkSize, chunkIter;
 	z_timespec start, end;
@@ -79,19 +80,60 @@ int main(int argc, char** argv)
 	}
 
 	/* non regression */
+	/* adler32 */
 	{
-		uLong adler;
-		uLong sysAdler;
-		uInt chunkSize = 5504U;
+		chunkSize = (8192U <= (maxChunkSize - 64U)) ? 8192U : (maxChunkSize - 64U);
 
-		adler = sysAdler = adler32(0U, NULL, 0U);
-		adler = adler32(adler, chunk, chunkSize);
-		sysAdler = sysAdler32(sysAdler, chunk, chunkSize);
+		while (chunkSize > 0U)
+		{
+			uInt  misalign;
+			for (misalign = 0U; misalign < 32U; ++misalign)
+			{
+				uLong adler;
+				uLong sysAdler;
 
-		printf("adler32    %5u bytes: %08lX\n", (uInt)chunkSize, adler);
-		printf("sysAdler32 %5u bytes: %08lX\n", (uInt)chunkSize, sysAdler);
-		//return (adler == sysAdler) ? 0 : 1;
+				adler = adler32(0U, Z_NULL, 0U);
+				sysAdler = sysAdler32(0U, Z_NULL, 0U);
+				adler = adler32(adler, chunk + misalign, (uInt)chunkSize);
+				sysAdler = sysAdler32(sysAdler, chunk + misalign, (uInt)chunkSize);
+
+				if (adler != sysAdler) {
+					printf("adler32   , %2u misalign, %5u bytes: %08lX\n", misalign, (uInt)chunkSize, adler);
+					printf("sysAdler32, %2u misalign, %5u bytes: %08lX\n", misalign, (uInt)chunkSize, sysAdler);
+					result = 1;
+				}
+			}
+			--chunkSize;
+		}
 	}
+	/* crc32 */
+	{
+		chunkSize = (8192U <= (maxChunkSize - 64U)) ? 8192U : (maxChunkSize - 64U);
+
+		while (chunkSize > 0U)
+		{
+			uInt  misalign;
+			for (misalign = 0U; misalign < 32U; ++misalign)
+			{
+				uLong crc;
+				uLong sysCrc;
+
+				crc = crc32(0U, Z_NULL, 0U);
+				sysCrc = sysCrc32(0U, Z_NULL, 0U);
+				crc = crc32(crc, chunk + misalign, (uInt)chunkSize);
+				sysCrc = sysCrc32(sysCrc, chunk + misalign, (uInt)chunkSize);
+
+				if (crc != sysCrc) {
+					printf("crc32   , %2u misalign, %5u bytes: %08lX\n", misalign, (uInt)chunkSize, crc);
+					printf("sysCrc32, %2u misalign, %5u bytes: %08lX\n", misalign, (uInt)chunkSize, sysCrc);
+					result = 1;
+				}
+			}
+			--chunkSize;
+		}
+	}
+
+	/* bench */
 
 	for (chunkSize = 2U, chunkIter = iterations; chunkSize != 2U; chunkSize >>= 1, chunkIter <<= 1) {
 		double diff = DBL_MAX;
@@ -152,5 +194,5 @@ int main(int argc, char** argv)
 		printf("crc32    %5u bytes: %08lX at %6.2f MB/s\n", (uInt)chunkSize,    crc, totalSize /    diff / 1024.0 /1024.0);
 		printf("sysCrc32 %5u bytes: %08lX at %6.2f MB/s\n", (uInt)chunkSize, sysCrc, totalSize / sysDiff / 1024.0 /1024.0);
 	}
-	return 0;
+	return result;
 }
