@@ -101,6 +101,8 @@ int main(int argc, char** argv)
 					printf("adler32   , %2u misalign, %5u bytes: %08lX\n", misalign, (uInt)chunkSize, adler);
 					printf("sysAdler32, %2u misalign, %5u bytes: %08lX\n", misalign, (uInt)chunkSize, sysAdler);
 					result = 1;
+					chunkSize = 1U;
+					break;
 				}
 			}
 			--chunkSize;
@@ -127,6 +129,8 @@ int main(int argc, char** argv)
 					printf("crc32   , %2u misalign, %5u bytes: %08lX\n", misalign, (uInt)chunkSize, crc);
 					printf("sysCrc32, %2u misalign, %5u bytes: %08lX\n", misalign, (uInt)chunkSize, sysCrc);
 					result = 1;
+					chunkSize = 1U;
+					break;
 				}
 			}
 			--chunkSize;
@@ -135,7 +139,7 @@ int main(int argc, char** argv)
 
 	/* bench */
 
-	for (chunkSize = 2U, chunkIter = iterations; chunkSize != 2U; chunkSize >>= 1, chunkIter <<= 1) {
+	for (chunkSize = maxChunkSize, chunkIter = iterations; chunkSize != 2U; chunkSize >>= 1, chunkIter <<= 1) {
 		double diff = DBL_MAX;
 		double sysDiff = DBL_MAX;
 		uLong adler = 0U, sysAdler = 0U;

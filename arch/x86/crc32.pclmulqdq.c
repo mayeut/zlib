@@ -238,15 +238,51 @@ local void partial_fold(z_const size_t len,
     *xmm_crc3 = _mm_castps_si128(ps_res);
 }
 
+local unsigned long crc_fold_128to32(__m128i xmm_crc0)
+{
+    static z_const unsigned __attribute__((aligned(16))) crc_k[] = {
+        0xccaa009e, 0x00000000, /* rk5 */
+        0x63cd6124, 0x00000001, /* rk6 */
+        0xf7011641, 0x00000001, /* rk7 */
+        0xdb710641, 0x00000001  /* rk8 */
+    };
+
+    unsigned int crc;
+    __m128i x_tmp0, x_tmp1, crc_fold;
+
+    /*
+     * k1
+     */
+    crc_fold = _mm_load_si128((__m128i *)crc_k);
+
+    x_tmp0   = xmm_crc0;
+    x_tmp0   = _mm_clmulepi64_si128(x_tmp0, crc_fold, 0x00);
+    xmm_crc0 = _mm_srli_si128(xmm_crc0, 8);
+    xmm_crc0 = _mm_xor_si128(xmm_crc0, x_tmp0);
+
+    x_tmp0   = _mm_castps_si128( _mm_move_ss(_mm_setzero_ps(), _mm_castsi128_ps(xmm_crc0)));
+    xmm_crc0 = _mm_srli_si128(xmm_crc0, 4);
+    x_tmp0   = _mm_clmulepi64_si128(x_tmp0, crc_fold, 0x10);
+    xmm_crc0 = _mm_xor_si128(xmm_crc0, x_tmp0);
+
+    crc_fold = _mm_load_si128((__m128i *)crc_k + 1);
+    x_tmp0   = _mm_castps_si128( _mm_move_ss(_mm_setzero_ps(), _mm_castsi128_ps(xmm_crc0)));
+    x_tmp0   = _mm_clmulepi64_si128(x_tmp0, crc_fold, 0x00);
+    x_tmp1   = _mm_castps_si128( _mm_move_ss(_mm_setzero_ps(), _mm_castsi128_ps(x_tmp0)));
+    x_tmp1   = _mm_clmulepi64_si128(x_tmp1, crc_fold, 0x10);
+    xmm_crc0 = _mm_xor_si128(xmm_crc0, x_tmp1);
+    xmm_crc0 = _mm_srli_si128(xmm_crc0, 4);
+
+    crc = _mm_cvtsi128_si32(xmm_crc0);
+    crc = ~crc;
+    return (unsigned long)crc;
+}
+
 local unsigned long crc_fold_512to32(__m128i xmm_crc0, __m128i xmm_crc1, __m128i xmm_crc2, __m128i xmm_crc3 )
 {
     static z_const unsigned __attribute__((aligned(16))) crc_k[] = {
         0x751997d0, 0x00000001, /* rk2 */
-        0xccaa009e, 0x00000000, /* rk1 */
-        0xccaa009e, 0x00000000, /* rk5 */
-        0x63cd6124, 0x00000001, /* rk6 */
-        0xf7011640, 0x00000001, /* rk7 */
-        0xdb710640, 0x00000001  /* rk8 */
+        0xccaa009e, 0x00000000 /* rk1 */
     };
 
     static z_const unsigned __attribute__((aligned(16))) crc_mask[4] = {
@@ -283,41 +319,7 @@ local unsigned long crc_fold_512to32(__m128i xmm_crc0, __m128i xmm_crc1, __m128i
     xmm_crc3 = _mm_xor_si128(xmm_crc3, x_tmp2);
     xmm_crc3 = _mm_xor_si128(xmm_crc3, xmm_crc2);
 
-    /*
-     * k5
-     */
-    crc_fold = _mm_load_si128((__m128i *)crc_k + 1);
-
-    xmm_crc0 = xmm_crc3;
-    xmm_crc3 = _mm_clmulepi64_si128(xmm_crc3, crc_fold, 0x00);
-    xmm_crc0 = _mm_srli_si128(xmm_crc0, 8);
-    xmm_crc3 = _mm_xor_si128(xmm_crc3, xmm_crc0);
-
-    xmm_crc0 = xmm_crc3;
-    xmm_crc3 = _mm_slli_si128(xmm_crc3, 4);
-    xmm_crc3 = _mm_clmulepi64_si128(xmm_crc3, crc_fold, 0x10);
-    xmm_crc3 = _mm_xor_si128(xmm_crc3, xmm_crc0);
-    xmm_crc3 = _mm_and_si128(xmm_crc3, xmm_mask2);
-
-    /*
-     * k7
-     */
-    xmm_crc1 = xmm_crc3;
-    xmm_crc2 = xmm_crc3;
-    crc_fold = _mm_load_si128((__m128i *)crc_k + 2);
-
-    xmm_crc3 = _mm_clmulepi64_si128(xmm_crc3, crc_fold, 0x00);
-    xmm_crc3 = _mm_xor_si128(xmm_crc3, xmm_crc2);
-    xmm_crc3 = _mm_and_si128(xmm_crc3, xmm_mask);
-
-    xmm_crc2 = xmm_crc3;
-    xmm_crc3 = _mm_clmulepi64_si128(xmm_crc3, crc_fold, 0x10);
-    xmm_crc3 = _mm_xor_si128(xmm_crc3, xmm_crc2);
-    xmm_crc3 = _mm_xor_si128(xmm_crc3, xmm_crc1);
-
-    crc = _mm_extract_epi32(xmm_crc3, 2);
-    crc = ~crc;
-    return (unsigned long)crc;
+    return crc_fold_128to32(xmm_crc3);
 }
 
 local uLong crc32_pclmulqdq_aligned64(crc, buf, len)
@@ -443,46 +445,6 @@ local void fold128(__m128i *xmm_crc0)
 	ps_t0 = _mm_castsi128_ps(x_tmp0);
 	ps_res0 = _mm_xor_ps(ps_crc0, ps_t0);
 	*xmm_crc0 = _mm_castps_si128(ps_res0);
-}
-
-local unsigned long crc_fold_128to32(__m128i xmm_crc0)
-{
-    static z_const unsigned __attribute__((aligned(16))) crc_k[] = {
-        0xccaa009e, 0x00000000, /* rk5 */
-        0x63cd6124, 0x00000001, /* rk6 */
-        0xf7011641, 0x00000001, /* rk7 */
-        0xdb710641, 0x00000001  /* rk8 */
-    };
-
-    unsigned int crc;
-    __m128i x_tmp0, x_tmp1, crc_fold;
-
-    /*
-     * k1
-     */
-    crc_fold = _mm_load_si128((__m128i *)crc_k);
-
-    x_tmp0   = xmm_crc0;
-    x_tmp0   = _mm_clmulepi64_si128(x_tmp0, crc_fold, 0x00);
-    xmm_crc0 = _mm_srli_si128(xmm_crc0, 8);
-    xmm_crc0 = _mm_xor_si128(xmm_crc0, x_tmp0);
-
-    x_tmp0   = _mm_castps_si128( _mm_move_ss(_mm_setzero_ps(), _mm_castsi128_ps(xmm_crc0)));
-    xmm_crc0 = _mm_srli_si128(xmm_crc0, 4);
-    x_tmp0   = _mm_clmulepi64_si128(x_tmp0, crc_fold, 0x10);
-    xmm_crc0 = _mm_xor_si128(xmm_crc0, x_tmp0);
-
-    crc_fold = _mm_load_si128((__m128i *)crc_k + 1);
-    x_tmp0   = _mm_castps_si128( _mm_move_ss(_mm_setzero_ps(), _mm_castsi128_ps(xmm_crc0)));
-    x_tmp0   = _mm_clmulepi64_si128(x_tmp0, crc_fold, 0x00);
-    x_tmp1   = _mm_castps_si128( _mm_move_ss(_mm_setzero_ps(), _mm_castsi128_ps(x_tmp0)));
-    x_tmp1   = _mm_clmulepi64_si128(x_tmp1, crc_fold, 0x10);
-    xmm_crc0 = _mm_xor_si128(xmm_crc0, x_tmp1);
-    xmm_crc0 = _mm_srli_si128(xmm_crc0, 4);
-
-    crc = _mm_cvtsi128_si32(xmm_crc0);
-    crc = ~crc;
-    return (unsigned long)crc;
 }
 
 local uLong crc32_pclmulqdq_aligned16(crc, buf, len)
