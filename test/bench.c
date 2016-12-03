@@ -150,7 +150,7 @@ int main(int argc, char** argv)
 			adler = adler32(0U, NULL, 0U);
 			z_gettime(&start);
 			for (i = chunkIter; i != 0U; --i) {
-				adler = adler32(adler, chunk, (uInt)chunkSize);
+				adler = adler32(adler, chunk, (uInt)chunkSize - 1U);
 			}
 			z_gettime(&end);
 			onediff = z_timediff_sec(&start, &end);
@@ -159,14 +159,14 @@ int main(int argc, char** argv)
 			sysAdler = sysAdler32(0U, NULL, 0U);
 			z_gettime(&start);
 			for (i = chunkIter; i != 0U; --i) {
-				sysAdler = sysAdler32(sysAdler, chunk, (uInt)chunkSize);
+				sysAdler = sysAdler32(sysAdler, chunk, (uInt)chunkSize - 1U);
 			}
 			z_gettime(&end);
 			onediff = z_timediff_sec(&start, &end);
 			if (onediff < sysDiff) sysDiff = onediff;
 		}
-		printf("adler32    %5u bytes: %08lX at %8.2f MB/s\n", (uInt)chunkSize,    adler, totalSize /    diff / 1024.0 /1024.0);
-		printf("sysAdler32 %5u bytes: %08lX at %8.2f MB/s\n", (uInt)chunkSize, sysAdler, totalSize / sysDiff / 1024.0 /1024.0);
+		printf("adler32    %5u bytes: %08lX at %8.2f MB/s\n", (uInt)chunkSize - 1U,    adler, totalSize /    diff / 1024.0 /1024.0);
+		printf("sysAdler32 %5u bytes: %08lX at %8.2f MB/s\n", (uInt)chunkSize - 1U, sysAdler, totalSize / sysDiff / 1024.0 /1024.0);
 	}
 	
 	for (chunkSize = maxChunkSize, chunkIter = iterations; chunkSize != 2U; chunkSize >>= 1, chunkIter <<= 1) {
@@ -180,7 +180,7 @@ int main(int argc, char** argv)
 			crc = crc32(0U, NULL, 0U);
 			z_gettime(&start);
 			for (i = chunkIter; i != 0U; --i) {
-				crc = crc32(crc, chunk, (uInt)chunkSize);
+				crc = crc32(crc, chunk, (uInt)chunkSize - 1U);
 			}
 			z_gettime(&end);
 			onediff = z_timediff_sec(&start, &end);
@@ -189,14 +189,14 @@ int main(int argc, char** argv)
 			sysCrc = sysCrc32(0U, NULL, 0U);
 			z_gettime(&start);
 			for (i = chunkIter; i != 0U; --i) {
-				sysCrc = sysCrc32(sysCrc, chunk, (uInt)chunkSize);
+				sysCrc = sysCrc32(sysCrc, chunk, (uInt)chunkSize - 1U);
 			}
 			z_gettime(&end);
 			onediff = z_timediff_sec(&start, &end);
 			if (onediff < sysDiff) sysDiff = onediff;
 		}
-		printf("crc32    %5u bytes: %08lX at %6.2f MB/s\n", (uInt)chunkSize,    crc, totalSize /    diff / 1024.0 /1024.0);
-		printf("sysCrc32 %5u bytes: %08lX at %6.2f MB/s\n", (uInt)chunkSize, sysCrc, totalSize / sysDiff / 1024.0 /1024.0);
+		printf("crc32    %5u bytes: %08lX at %6.2f MB/s\n", (uInt)chunkSize - 1U,    crc, totalSize /    diff / 1024.0 /1024.0);
+		printf("sysCrc32 %5u bytes: %08lX at %6.2f MB/s\n", (uInt)chunkSize - 1U, sysCrc, totalSize / sysDiff / 1024.0 /1024.0);
 	}
 	return result;
 }
