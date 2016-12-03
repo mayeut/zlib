@@ -215,6 +215,10 @@ extern z_const char * const z_errmsg[10]; /* indexed by 2-zlib_error */
    void ZLIB_INTERNAL zmemzero OF((Bytef* dest, uInt len));
 #endif
 
+/* Checksum functions */
+uLong ZLIB_INTERNAL crc32_copy OF((uLong crc, const Bytef *buf, uInt len, Bytef *dest));
+uLong ZLIB_INTERNAL adler32_copy OF((uLong crc, const Bytef *buf, uInt len, Bytef *dest));
+
 /* Diagnostic functions */
 #ifdef DEBUG
 #  include <stdio.h>

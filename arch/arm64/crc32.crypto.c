@@ -477,3 +477,294 @@ endloop16:
     return crc;
 }
 
+ZLIB_INTERNAL uLong crc32_copy_generic OF((uLong crc, const Bytef *buf, uInt len, Bytef *dest));
+
+ZLIB_INTERNAL uLong crc32_copy_crypto(crc, buf, len, dest)
+    uLong crc;
+    const Bytef *buf;
+    uInt len;
+    Bytef *dest;
+{
+    if (len < 16) {
+        crc = crc32_copy_generic(crc, buf, len, dest);
+    } else {
+        static z_const uint64_t fold1248_u64[] = {
+            0x00000001751997d0U, /* fold by  128 bits */
+            0x00000000ccaa009eU,
+            0x00000000f1da05aaU, /* fold by  256 bits */
+            0x000000015a546366U,
+            0x0000000154442bd4U, /* fold by  512 bits */
+            0x00000001c6e41596U,
+            0x00000001e88ef372U, /* fold by 1024 bits */
+            0x000000014a7fe880U
+        };
+        register z_const poly64x2x4_t crc_fold = vld1q_p64_x4(fold1248_u64);
+        uint8x16_t c = vreinterpretq_u8_u32(vsetq_lane_u32(~(uint32_t)crc, vdupq_n_u32(0U), 0));
+
+        uint8x16_t xmm_crc0, xmm_crc1, xmm_crc2, xmm_crc3;
+        uint8x16_t xmm_crc4, xmm_crc5, xmm_crc6, xmm_crc7;
+
+        xmm_crc0 = vld1q_u8(buf +   0);
+        if (len < 32) {
+            vst1q_u8(dest +   0, xmm_crc0);
+            xmm_crc0 = veorq_u8(xmm_crc0, c);
+            len -= 16U;
+            buf += 16;
+            dest += 16;
+            goto endloop16;
+        }
+        xmm_crc1 = vld1q_u8(buf +  16);
+        if (len < 64) {
+            vst1q_u8(dest +   0, xmm_crc0);
+            vst1q_u8(dest +  16, xmm_crc1);
+            xmm_crc0 = veorq_u8(xmm_crc0, c);
+            len -= 32U;
+            buf += 32;
+            dest += 32;
+            goto endloop32;
+        }
+        xmm_crc2 = vld1q_u8(buf +  32);
+        xmm_crc3 = vld1q_u8(buf +  48);
+        if (len < 128) {
+            vst1q_u8(dest +   0, xmm_crc0);
+            vst1q_u8(dest +  16, xmm_crc1);
+            vst1q_u8(dest +  32, xmm_crc2);
+            vst1q_u8(dest +  48, xmm_crc3);
+            xmm_crc0 = veorq_u8(xmm_crc0, c);
+            len -= 64U;
+            buf += 64;
+            dest += 64;
+            goto endloop64;
+        }
+        xmm_crc4 = vld1q_u8(buf +  64);
+        xmm_crc5 = vld1q_u8(buf +  80);
+        xmm_crc6 = vld1q_u8(buf +  96);
+        xmm_crc7 = vld1q_u8(buf + 112);
+        vst1q_u8(dest +   0, xmm_crc0);
+        vst1q_u8(dest +  16, xmm_crc1);
+        vst1q_u8(dest +  32, xmm_crc2);
+        vst1q_u8(dest +  48, xmm_crc3);
+        vst1q_u8(dest +  64, xmm_crc4);
+        vst1q_u8(dest +  80, xmm_crc5);
+        vst1q_u8(dest +  96, xmm_crc6);
+        vst1q_u8(dest + 112, xmm_crc7);
+        xmm_crc0 = veorq_u8(xmm_crc0, c);
+        len -= 128U;
+        buf += 128;
+        dest += 128;
+
+        while (len >= 128U) {
+            uint8x16x4_t src0;
+            uint8x16x4_t src4;
+
+            poly128_t tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
+            poly128_t tmp8, tmp9, tmpA, tmpB, tmpC, tmpD, tmpE, tmpF;
+
+            src0 = vld1q_u8_x4(buf +  0);
+            src4 = vld1q_u8_x4(buf + 64);
+
+            tmp0 = vmull_p64((poly64_t)vget_low_p64(vreinterpretq_p64_u8(xmm_crc0)), (poly64_t)vget_low_p64(crc_fold.val[3]));
+            tmp1 = vmull_high_p64(vreinterpretq_p64_u8(xmm_crc0), crc_fold.val[3]);
+
+            tmp2 = vmull_p64((poly64_t)vget_low_p64(vreinterpretq_p64_u8(xmm_crc1)), (poly64_t)vget_low_p64(crc_fold.val[3]));
+            tmp3 = vmull_high_p64(vreinterpretq_p64_u8(xmm_crc1), crc_fold.val[3]);
+
+            tmp4 = vmull_p64((poly64_t)vget_low_p64(vreinterpretq_p64_u8(xmm_crc2)), (poly64_t)vget_low_p64(crc_fold.val[3]));
+            tmp5 = vmull_high_p64(vreinterpretq_p64_u8(xmm_crc2), crc_fold.val[3]);
+
+            tmp6 = vmull_p64((poly64_t)vget_low_p64(vreinterpretq_p64_u8(xmm_crc3)), (poly64_t)vget_low_p64(crc_fold.val[3]));
+            tmp7 = vmull_high_p64(vreinterpretq_p64_u8(xmm_crc3), crc_fold.val[3]);
+
+            tmp8 = vmull_p64((poly64_t)vget_low_p64(vreinterpretq_p64_u8(xmm_crc4)), (poly64_t)vget_low_p64(crc_fold.val[3]));
+            tmp9 = vmull_high_p64(vreinterpretq_p64_u8(xmm_crc4), crc_fold.val[3]);
+
+            tmpA = vmull_p64((poly64_t)vget_low_p64(vreinterpretq_p64_u8(xmm_crc5)), (poly64_t)vget_low_p64(crc_fold.val[3]));
+            tmpB = vmull_high_p64(vreinterpretq_p64_u8(xmm_crc5), crc_fold.val[3]);
+
+            tmpC = vmull_p64((poly64_t)vget_low_p64(vreinterpretq_p64_u8(xmm_crc6)), (poly64_t)vget_low_p64(crc_fold.val[3]));
+            tmpD = vmull_high_p64(vreinterpretq_p64_u8(xmm_crc6), crc_fold.val[3]);
+
+            tmpE = vmull_p64((poly64_t)vget_low_p64(vreinterpretq_p64_u8(xmm_crc7)), (poly64_t)vget_low_p64(crc_fold.val[3]));
+            tmpF = vmull_high_p64(vreinterpretq_p64_u8(xmm_crc7), crc_fold.val[3]);
+
+            xmm_crc0 = veorq_u8(vreinterpretq_u8_p128(tmp0), vreinterpretq_u8_p128(tmp1));
+            xmm_crc1 = veorq_u8(vreinterpretq_u8_p128(tmp2), vreinterpretq_u8_p128(tmp3));
+            xmm_crc2 = veorq_u8(vreinterpretq_u8_p128(tmp4), vreinterpretq_u8_p128(tmp5));
+            xmm_crc3 = veorq_u8(vreinterpretq_u8_p128(tmp6), vreinterpretq_u8_p128(tmp7));
+            xmm_crc4 = veorq_u8(vreinterpretq_u8_p128(tmp8), vreinterpretq_u8_p128(tmp9));
+            xmm_crc5 = veorq_u8(vreinterpretq_u8_p128(tmpA), vreinterpretq_u8_p128(tmpB));
+            xmm_crc6 = veorq_u8(vreinterpretq_u8_p128(tmpC), vreinterpretq_u8_p128(tmpD));
+            xmm_crc7 = veorq_u8(vreinterpretq_u8_p128(tmpE), vreinterpretq_u8_p128(tmpF));
+
+            vst1q_u8_x4(dest +  0, src0);
+            vst1q_u8_x4(dest + 64, src4);
+
+            xmm_crc0 = veorq_u8(xmm_crc0, src0.val[0]);
+            xmm_crc1 = veorq_u8(xmm_crc1, src0.val[1]);
+            xmm_crc2 = veorq_u8(xmm_crc2, src0.val[2]);
+            xmm_crc3 = veorq_u8(xmm_crc3, src0.val[3]);
+            xmm_crc4 = veorq_u8(xmm_crc4, src4.val[0]);
+            xmm_crc5 = veorq_u8(xmm_crc5, src4.val[1]);
+            xmm_crc6 = veorq_u8(xmm_crc6, src4.val[2]);
+            xmm_crc7 = veorq_u8(xmm_crc7, src4.val[3]);
+
+            len -= 128U;
+            buf += 128;
+            dest += 128;
+        }
+        if (len >= 112U) {
+            uint8x16x4_t src0;
+            uint8x16x3_t src4;
+
+            src0 = vld1q_u8_x4(buf +  0);
+            src4 = vld1q_u8_x3(buf + 64);
+
+            fold_8_7(crc_fold, &xmm_crc0, &xmm_crc1, &xmm_crc2, &xmm_crc3, &xmm_crc4, &xmm_crc5, &xmm_crc6, &xmm_crc7);
+
+            vst1q_u8_x4(dest +  0, src0);
+            vst1q_u8_x3(dest + 64, src4);
+
+            xmm_crc1 = veorq_u8(xmm_crc1, src0.val[0]);
+            xmm_crc2 = veorq_u8(xmm_crc2, src0.val[1]);
+            xmm_crc3 = veorq_u8(xmm_crc3, src0.val[2]);
+            xmm_crc4 = veorq_u8(xmm_crc4, src0.val[3]);
+            xmm_crc5 = veorq_u8(xmm_crc5, src4.val[0]);
+            xmm_crc6 = veorq_u8(xmm_crc6, src4.val[1]);
+            xmm_crc7 = veorq_u8(xmm_crc7, src4.val[2]);
+
+            len -= 112U;
+            buf += 112;
+            dest += 112;
+        }
+        fold_4(crc_fold, &xmm_crc0, &xmm_crc1, &xmm_crc2, &xmm_crc3);
+        xmm_crc0 = veorq_u8(xmm_crc0, xmm_crc4);
+        xmm_crc1 = veorq_u8(xmm_crc1, xmm_crc5);
+        xmm_crc2 = veorq_u8(xmm_crc2, xmm_crc6);
+        xmm_crc3 = veorq_u8(xmm_crc3, xmm_crc7);
+        /* loop64: */
+        if (len & 64U) {
+            uint8x16x4_t src0;
+
+            src0 = vld1q_u8_x4(buf +  0);
+
+            fold_4(crc_fold, &xmm_crc0, &xmm_crc1, &xmm_crc2, &xmm_crc3);
+
+            vst1q_u8_x4(dest +  0, src0);
+
+            xmm_crc0 = veorq_u8(xmm_crc0, src0.val[0]);
+            xmm_crc1 = veorq_u8(xmm_crc1, src0.val[1]);
+            xmm_crc2 = veorq_u8(xmm_crc2, src0.val[2]);
+            xmm_crc3 = veorq_u8(xmm_crc3, src0.val[3]);
+
+            len -= 64U;
+            buf += 64;
+            dest += 64;
+        }
+    endloop64:
+        if (len >= 48U) {
+            uint8x16x3_t src0;
+
+            src0 = vld1q_u8_x3(buf +  0);
+
+            fold_4_3(crc_fold, &xmm_crc0, &xmm_crc1, &xmm_crc2, &xmm_crc3);
+
+            vst1q_u8_x3(dest + 0, src0);
+
+            xmm_crc1 = veorq_u8(xmm_crc1, src0.val[0]);
+            xmm_crc2 = veorq_u8(xmm_crc2, src0.val[1]);
+            xmm_crc3 = veorq_u8(xmm_crc3, src0.val[2]);
+
+            len -= 48U;
+            buf += 48;
+            dest += 48;
+        }
+        fold_2(crc_fold, &xmm_crc0, &xmm_crc1);
+        xmm_crc0 = veorq_u8(xmm_crc0, xmm_crc2);
+        xmm_crc1 = veorq_u8(xmm_crc1, xmm_crc3);
+        /* loop32: */
+        if (len & 32U) {
+            uint8x16x2_t src0;
+
+            src0 = vld1q_u8_x2(buf +  0);
+
+            fold_2(crc_fold, &xmm_crc0, &xmm_crc1);
+
+            vst1q_u8_x2(dest +  0, src0);
+
+            xmm_crc0 = veorq_u8(xmm_crc0, src0.val[0]);
+            xmm_crc1 = veorq_u8(xmm_crc1, src0.val[1]);
+
+            len -= 32U;
+            buf += 32;
+            dest += 32;
+        }
+    endloop32:
+        fold_1(crc_fold, &xmm_crc0);
+        xmm_crc0 = veorq_u8(xmm_crc0, xmm_crc1);
+        /*loop16:*/
+        if (len & 16U)
+        {
+            uint8x16_t src0;
+
+            src0 = vld1q_u8(buf +  0);
+
+            fold_1(crc_fold, &xmm_crc0);
+
+            vst1q_u8(dest +  0, src0);
+
+            xmm_crc0 = veorq_u8(xmm_crc0, src0);
+
+            len -= 16U;
+            buf += 16;
+            dest += 16;
+        }
+    endloop16:
+        if (len) {
+            unsigned char __attribute__((aligned(16))) partial_buf[16] = { 0 };
+            union {
+                unsigned char* c;
+                uint16_t* u16;
+                uint32_t* u32;
+                uint64_t* u64;
+            } dst;
+            union {
+                unsigned char* c;
+                uint16_t* u16;
+                uint32_t* u32;
+                uint64_t* u64;
+            } dst2;
+            union {
+                const unsigned char* c;
+                const uint16_t* u16;
+                const uint32_t* u32;
+                const uint64_t* u64;
+            } src;
+            uint8x16_t xmm_crc_part;
+
+            src.c = buf;
+            dst.c = partial_buf;
+            dst2.c = dest;
+
+            if (len & 8) {
+                *dst.u64++ = *src.u64;
+                *dst2.u64++ = *src.u64++;
+            }
+            if (len & 4) {
+                *dst.u32++ = *src.u32;
+                *dst2.u32++ = *src.u32++;
+            }
+            if (len & 2) {
+                *dst.u16++ = *src.u16;
+                *dst2.u16++ = *src.u16++;
+            }
+            if (len & 1) {
+                *dst.c++ = *src.c;
+                *dst2.c++ = *src.c++;
+            }
+            xmm_crc_part = vld1q_u8(partial_buf);
+            partial_fold1(len, crc_fold, &xmm_crc0, &xmm_crc_part);
+        }
+        crc = fold_128to32(xmm_crc0);
+    }
+    return crc;
+}

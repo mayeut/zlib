@@ -191,3 +191,43 @@ uLong ZEXPORT adler32_combine64(adler1, adler2, len2)
 {
     return adler32_combine_(adler1, adler2, len2);
 }
+
+/* ========================================================================= */
+uLong ZLIB_INTERNAL adler32_copy_generic(adler, buf, len, dest)
+    uLong adler;
+    const Bytef *buf;
+    uInt len;
+    Bytef *dest;
+{
+    const uInt blockSize = 2048U;
+
+    if (buf == Z_NULL) {
+        return adler32(0U, Z_NULL, 0U);
+    }
+    while (len > blockSize) {
+        zmemcpy(dest, buf, blockSize);
+        adler = adler32(adler, buf, blockSize);
+        buf += blockSize;
+        dest += blockSize;
+        len -= blockSize;
+    }
+    zmemcpy(dest, buf, len);
+    adler = adler32(adler, buf, len);
+
+    return adler;
+}
+
+ZLIB_INTERNAL uLong adler32_copy_dispatch OF((uLong adler, const Bytef *buf, uInt len, Bytef *dest));
+
+uLong ZLIB_INTERNAL adler32_copy(adler, buf, len, dest)
+    uLong adler;
+    const Bytef *buf;
+    uInt len;
+    Bytef *dest;
+{
+#if 1
+    return adler32_copy_dispatch(adler, buf, len, dest);
+#else
+    return adler32_copy_generic(adler, buf, len, dest);
+#endif
+}

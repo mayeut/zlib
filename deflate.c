@@ -1078,15 +1078,18 @@ ZLIB_INTERNAL int read_buf(strm, buf, size)
 
     strm->avail_in  -= len;
 
-    zmemcpy(buf, strm->next_in, len);
     if (strm->state->wrap == 1) {
-        strm->adler = adler32(strm->adler, buf, len);
+        strm->adler = adler32_copy(strm->adler, strm->next_in, len, buf);
     }
 #ifdef GZIP
     else if (strm->state->wrap == 2) {
-        strm->adler = crc32(strm->adler, buf, len);
+        strm->adler = crc32_copy(strm->adler, strm->next_in, len, buf);
     }
 #endif
+    else {
+        /* this seem of no use but this way equivalent to official zlib */
+        zmemcpy(buf, strm->next_in, len);
+    }
     strm->next_in  += len;
     strm->total_in += len;
 

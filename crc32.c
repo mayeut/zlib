@@ -488,3 +488,43 @@ uLong ZEXPORT crc32_combine64(crc1, crc2, len2)
 {
     return crc32_combine_(crc1, crc2, len2);
 }
+
+/* ========================================================================= */
+uLong ZLIB_INTERNAL crc32_copy_generic(crc, buf, len, dest)
+    uLong crc;
+    const Bytef *buf;
+    uInt len;
+    Bytef *dest;
+{
+    const uInt blockSize = 2048U;
+
+    if (buf == Z_NULL) {
+        return crc32(0U, Z_NULL, 0U);
+    }
+    while (len > blockSize) {
+        zmemcpy(dest, buf, blockSize);
+        crc = crc32(crc, buf, blockSize);
+        buf += blockSize;
+        dest += blockSize;
+        len -= blockSize;
+    }
+    zmemcpy(dest, buf, len);
+    crc = crc32(crc, buf, len);
+    
+    return crc;
+}
+
+ZLIB_INTERNAL uLong crc32_copy_dispatch OF((uLong crc, const Bytef *buf, uInt len, Bytef *dest));
+
+uLong ZLIB_INTERNAL crc32_copy(crc, buf, len, dest)
+    uLong crc;
+    const Bytef *buf;
+    uInt len;
+    Bytef *dest;
+{
+#if 1
+    return crc32_copy_dispatch(crc, buf, len, dest);
+#else
+    return crc32_copy_generic(crc, buf, len, dest);
+#endif
+}
