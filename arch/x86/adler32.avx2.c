@@ -1,5 +1,6 @@
-/* adler32.c -- compute the Adler-32 checksum of a data stream
+/* arch/x86/adler32.avx2.c -- compute the Adler-32 checksum of a data stream using AVX2 SIMD extensions
  * Copyright (C) 1995-2011 Mark Adler
+ * Copyright (C) 2016-2017 Matthieu Darbois
  * For conditions of distribution and use, see copyright notice in zlib.h
  */
 

@@ -123,19 +123,27 @@ set(ZLIB_SRCS
     zutil.c
     arch/x86/dispatch.c
     arch/x86/adler32.sse2.c
+    arch/x86/adler32.ssse3.c
     arch/x86/adler32.avx2.c
     arch/x86/crc32.pclmulqdq.c
     arch/x86/fill_window.sse2.c
+    arch/x86/match.sse42.c
 )
 
-set_property(SOURCE arch/x86/crc32.pclmulqdq.c APPEND_STRING PROPERTY COMPILE_FLAGS " -mpclmul")
+set_property(SOURCE arch/x86/crc32.pclmulqdq.c APPEND_STRING PROPERTY COMPILE_FLAGS " -msse4.2 -mpclmul")
+set_property(SOURCE arch/x86/adler32.sse2.c APPEND_STRING PROPERTY COMPILE_FLAGS " -msse2 -mno-ssse3")
+set_property(SOURCE arch/x86/adler32.sse2.c APPEND_STRING PROPERTY COMPILE_FLAGS " -mssse3")
 set_property(SOURCE arch/x86/adler32.avx2.c APPEND_STRING PROPERTY COMPILE_FLAGS " -mavx2")
+set_property(SOURCE arch/x86/match.sse42.c APPEND_STRING PROPERTY COMPILE_FLAGS " -msse4.2")
+set_property(SOURCE arch/x86/fill_window.sse2.c APPEND_STRING PROPERTY COMPILE_FLAGS " -msse2")
 
 if(NOT MINGW)
     set(ZLIB_DLL_SRCS
         win32/zlib1.rc # If present will override custom build rule below.
     )
 endif()
+
+add_definitions(-DUNALIGNED_OK)
 
 if(CMAKE_COMPILER_IS_GNUCC)
     if(ASM686)

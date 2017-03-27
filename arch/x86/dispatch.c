@@ -153,6 +153,7 @@ local unsigned int zl_get_feature_flags()
 
 ZLIB_INTERNAL uLong adler32_generic OF((uLong adler, const Bytef *buf, uInt len));
 ZLIB_INTERNAL uLong adler32_sse2    OF((uLong adler, const Bytef *buf, uInt len));
+ZLIB_INTERNAL uLong adler32_ssse3   OF((uLong adler, const Bytef *buf, uInt len));
 ZLIB_INTERNAL uLong adler32_avx2    OF((uLong adler, const Bytef *buf, uInt len));
 
 local uLong zl_adler32_dispatch_init(adler, buf, len)
@@ -165,6 +166,8 @@ local uLong zl_adler32_dispatch_init(adler, buf, len)
 
     if (features & ZL_AVX2) {
         function = adler32_avx2;
+    } else if (features & ZL_SSSE3) {
+        function = adler32_ssse3;
     } else if (features & ZL_SSE2) {
         function = adler32_sse2;
     }
@@ -183,6 +186,7 @@ ZLIB_INTERNAL uLong adler32_dispatch(adler, buf, len)
 
 ZLIB_INTERNAL uLong adler32_copy_generic OF((uLong adler, const Bytef *buf, uInt len, Bytef *dest));
 ZLIB_INTERNAL uLong adler32_copy_sse2    OF((uLong adler, const Bytef *buf, uInt len, Bytef *dest));
+ZLIB_INTERNAL uLong adler32_copy_ssse3   OF((uLong adler, const Bytef *buf, uInt len, Bytef *dest));
 ZLIB_INTERNAL uLong adler32_copy_avx2    OF((uLong adler, const Bytef *buf, uInt len, Bytef *dest));
 
 local uLong zl_adler32_copy_dispatch_init(adler, buf, len, dest)
@@ -196,6 +200,8 @@ local uLong zl_adler32_copy_dispatch_init(adler, buf, len, dest)
 
     if (features & ZL_AVX2) {
         function = adler32_copy_avx2;
+    } else if (features & ZL_SSSE3) {
+        function = adler32_copy_ssse3;
     } else if (features & ZL_SSE2) {
         function = adler32_copy_sse2;
     }
