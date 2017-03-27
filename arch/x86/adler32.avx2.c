@@ -31,10 +31,9 @@ ZLIB_INTERNAL uLong adler32_avx2(iadler, buf, len)
     const __m256i c_zero   = _mm256_setzero_si256();
     const __m128i c_sum2hi = _mm_set_epi8( 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16); /* weighs for sum2 addend elements */
     const __m128i c_sum2lo = _mm_set_epi8(17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32); /* weighs for sum2 addend elements */
-
-    const __m256i c_sum2mul = _mm256_set_epi16(NMAX-15, NMAX-14, NMAX-13, NMAX-12, NMAX-11, NMAX-10, NMAX-9, NMAX-8, NMAX-7, NMAX-6, NMAX-5, NMAX-4, NMAX-3, NMAX-2, NMAX-1, NMAX);
-
-    const __m256i c_sum2add = _mm256_set1_epi16(16);
+    const __m256i c_sum2mulhi = _mm256_set_epi8( 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32); /* weighs for sum2 addend elements */
+    const __m256i c_sum2mullo = _mm256_set_epi8(33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64); /* weighs for sum2 addend elements */
+    const __m256i one = _mm256_set1_epi16(1);
 
     /* split Adler-32 into component sums */
     sum2 = (adler >> 16) & 0xffffU;
@@ -73,7 +72,9 @@ ZLIB_INTERNAL uLong adler32_avx2(iadler, buf, len)
     while ( len >= NMAX ) {
         __m256i adler_acc = _mm256_setzero_si256();
         __m256i sum2_acc  = _mm256_setzero_si256();
-        __m256i sum2mul   = _mm256_add_epi16(c_sum2mul, c_sum2add);
+
+        adler_acc = _mm256_insert_epi32(adler_acc, adler, 0);
+        sum2_acc = _mm256_insert_epi32(sum2_acc, sum2, 0);
 
         len -= NMAX;
 
@@ -81,36 +82,27 @@ ZLIB_INTERNAL uLong adler32_avx2(iadler, buf, len)
         do {
             __m256i srclo_0, srclo_1;
             __m256i adlerlo_0, adlerlo_1;
-            __m256i sum2lo_0, sum2lo_1, sum2lo_2, sum2lo_3;
-            __m256i sum2mul_0, sum2mul_1, sum2mul_2;
+            __m256i sum2lo_0, sum2lo_1;
 
             srclo_0   = _mm256_loadu_si256((const __m256i*)(buf +  0));
             srclo_1   = _mm256_loadu_si256((const __m256i*)(buf + 32));
 
-            sum2mul_0 = _mm256_sub_epi16(sum2mul, c_sum2add);
-            sum2mul_1 = _mm256_sub_epi16(sum2mul_0, c_sum2add);
-            sum2mul_2 = _mm256_sub_epi16(sum2mul_1, c_sum2add);
-            sum2mul   = _mm256_sub_epi16(sum2mul_2, c_sum2add);
+            sum2_acc = _mm256_add_epi32(sum2_acc, _mm256_slli_epi32(adler_acc, 6));
 
             adlerlo_0 = _mm256_sad_epu8(srclo_0, c_zero); /* compute sums of elements in upper / lower qwords */
             adlerlo_1 = _mm256_sad_epu8(srclo_1, c_zero); /* compute sums of elements in upper / lower qwords */
 
-            sum2lo_0 = _mm256_cvtepu8_epi16(_mm256_castsi256_si128(srclo_0));
-            sum2lo_1 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(srclo_0, 1));
-            sum2lo_2 = _mm256_cvtepu8_epi16(_mm256_castsi256_si128(srclo_1));
-            sum2lo_3 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(srclo_1, 1));
-            sum2lo_0 = _mm256_madd_epi16(sum2lo_0, sum2mul_0);
-            sum2lo_1 = _mm256_madd_epi16(sum2lo_1, sum2mul_1);
-            sum2lo_2 = _mm256_madd_epi16(sum2lo_2, sum2mul_2);
-            sum2lo_3 = _mm256_madd_epi16(sum2lo_3, sum2mul);
+            sum2lo_0 = _mm256_maddubs_epi16(srclo_0, c_sum2mullo);
+            sum2lo_1 = _mm256_maddubs_epi16(srclo_1, c_sum2mulhi);
+
+            sum2lo_0 = _mm256_madd_epi16(sum2lo_0, one);
+            sum2lo_1 = _mm256_madd_epi16(sum2lo_1, one);
 
             adlerlo_0 = _mm256_add_epi32(adlerlo_0, adlerlo_1);
             sum2lo_0  = _mm256_add_epi32(sum2lo_0, sum2lo_1);
-            sum2lo_2  = _mm256_add_epi32(sum2lo_2, sum2lo_3);
-            sum2lo_0  = _mm256_add_epi32(sum2lo_0, sum2lo_2);
             adler_acc = _mm256_add_epi32(adler_acc, adlerlo_0);
             sum2_acc  = _mm256_add_epi32(sum2_acc, sum2lo_0);
-
+            
             buf += 64;
         } while (--n);
 
@@ -128,8 +120,8 @@ ZLIB_INTERNAL uLong adler32_avx2(iadler, buf, len)
             sum2hi = _mm_srli_si128(sum2lo, 4);
             sum2lo = _mm_add_epi32(sum2lo, sum2hi); /* reduce to 1*32bits */
 
-            sum2  += NMAX * adler + (unsigned)_mm_cvtsi128_si32(sum2lo);
-            adler += (unsigned)_mm_cvtsi128_si32(adlerlo); /* Update adler sum */
+            sum2  = (unsigned)_mm_cvtsi128_si32(sum2lo);
+            adler = (unsigned)_mm_cvtsi128_si32(adlerlo); /* Update adler sum */
         }
 
         MOD(adler);
@@ -141,41 +133,31 @@ ZLIB_INTERNAL uLong adler32_avx2(iadler, buf, len)
         if (len >= 64) {
             __m256i adler_acc = _mm256_setzero_si256();
             __m256i sum2_acc  = _mm256_setzero_si256();
-            __m256i sum2mul   = _mm256_add_epi16(c_sum2mul, c_sum2add);
-            uInt len64 = len & ~(uInt)63U;
 
-            sum2mul = _mm256_sub_epi16(sum2mul, _mm256_set1_epi16(NMAX - len64));
+            adler_acc = _mm256_insert_epi32(adler_acc, adler, 0);
+            sum2_acc = _mm256_insert_epi32(sum2_acc, sum2, 0);
 
             do {
                 __m256i srclo_0, srclo_1;
                 __m256i adlerlo_0, adlerlo_1;
-                __m256i sum2lo_0, sum2lo_1, sum2lo_2, sum2lo_3;
-                __m256i sum2mul_0, sum2mul_1, sum2mul_2;
+                __m256i sum2lo_0, sum2lo_1;
 
                 srclo_0   = _mm256_loadu_si256((const __m256i*)(buf +  0));
                 srclo_1   = _mm256_loadu_si256((const __m256i*)(buf + 32));
 
-                sum2mul_0 = _mm256_sub_epi16(sum2mul, c_sum2add);
-                sum2mul_1 = _mm256_sub_epi16(sum2mul_0, c_sum2add);
-                sum2mul_2 = _mm256_sub_epi16(sum2mul_1, c_sum2add);
-                sum2mul   = _mm256_sub_epi16(sum2mul_2, c_sum2add);
+                sum2_acc = _mm256_add_epi32(sum2_acc, _mm256_slli_epi32(adler_acc, 6));
 
                 adlerlo_0 = _mm256_sad_epu8(srclo_0, c_zero); /* compute sums of elements in upper / lower qwords */
                 adlerlo_1 = _mm256_sad_epu8(srclo_1, c_zero); /* compute sums of elements in upper / lower qwords */
 
-                sum2lo_0 = _mm256_cvtepu8_epi16(_mm256_castsi256_si128(srclo_0));
-                sum2lo_1 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(srclo_0, 1));
-                sum2lo_2 = _mm256_cvtepu8_epi16(_mm256_castsi256_si128(srclo_1));
-                sum2lo_3 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(srclo_1, 1));
-                sum2lo_0 = _mm256_madd_epi16(sum2lo_0, sum2mul_0);
-                sum2lo_1 = _mm256_madd_epi16(sum2lo_1, sum2mul_1);
-                sum2lo_2 = _mm256_madd_epi16(sum2lo_2, sum2mul_2);
-                sum2lo_3 = _mm256_madd_epi16(sum2lo_3, sum2mul);
+                sum2lo_0 = _mm256_maddubs_epi16(srclo_0, c_sum2mullo);
+                sum2lo_1 = _mm256_maddubs_epi16(srclo_1, c_sum2mulhi);
+
+                sum2lo_0 = _mm256_madd_epi16(sum2lo_0, one);
+                sum2lo_1 = _mm256_madd_epi16(sum2lo_1, one);
 
                 adlerlo_0 = _mm256_add_epi32(adlerlo_0, adlerlo_1);
                 sum2lo_0  = _mm256_add_epi32(sum2lo_0, sum2lo_1);
-                sum2lo_2  = _mm256_add_epi32(sum2lo_2, sum2lo_3);
-                sum2lo_0  = _mm256_add_epi32(sum2lo_0, sum2lo_2);
                 adler_acc = _mm256_add_epi32(adler_acc, adlerlo_0);
                 sum2_acc  = _mm256_add_epi32(sum2_acc, sum2lo_0);
 
@@ -196,8 +178,8 @@ ZLIB_INTERNAL uLong adler32_avx2(iadler, buf, len)
                 sum2hi = _mm_srli_si128(sum2lo, 4);
                 sum2lo = _mm_add_epi32(sum2lo, sum2hi); /* reduce to 1*32bits */
 
-                sum2  += len64 * adler + (unsigned)_mm_cvtsi128_si32(sum2lo);
-                adler += (unsigned)_mm_cvtsi128_si32(adlerlo); /* Update adler sum */
+                sum2  = (unsigned)_mm_cvtsi128_si32(sum2lo);
+                adler = (unsigned)_mm_cvtsi128_si32(adlerlo); /* Update adler sum */
             }
         }
         if (len & 32U) {
@@ -282,10 +264,9 @@ ZLIB_INTERNAL uLong adler32_copy_avx2(iadler, buf, len, dest)
     const __m256i c_zero   = _mm256_setzero_si256();
     const __m128i c_sum2hi = _mm_set_epi8( 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16); /* weighs for sum2 addend elements */
     const __m128i c_sum2lo = _mm_set_epi8(17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32); /* weighs for sum2 addend elements */
-
-    const __m256i c_sum2mul = _mm256_set_epi16(NMAX-15, NMAX-14, NMAX-13, NMAX-12, NMAX-11, NMAX-10, NMAX-9, NMAX-8, NMAX-7, NMAX-6, NMAX-5, NMAX-4, NMAX-3, NMAX-2, NMAX-1, NMAX);
-
-    const __m256i c_sum2add = _mm256_set1_epi16(16);
+    const __m256i c_sum2mulhi = _mm256_set_epi8( 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32); /* weighs for sum2 addend elements */
+    const __m256i c_sum2mullo = _mm256_set_epi8(33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64); /* weighs for sum2 addend elements */
+    const __m256i one = _mm256_set1_epi16(1);
 
     /* split Adler-32 into component sums */
     sum2 = (adler >> 16) & 0xffffU;
@@ -327,7 +308,9 @@ ZLIB_INTERNAL uLong adler32_copy_avx2(iadler, buf, len, dest)
     while ( len >= NMAX ) {
         __m256i adler_acc = _mm256_setzero_si256();
         __m256i sum2_acc  = _mm256_setzero_si256();
-        __m256i sum2mul   = _mm256_add_epi16(c_sum2mul, c_sum2add);
+
+        adler_acc = _mm256_insert_epi32(adler_acc, adler, 0);
+        sum2_acc = _mm256_insert_epi32(sum2_acc, sum2, 0);
 
         len -= NMAX;
 
@@ -335,16 +318,12 @@ ZLIB_INTERNAL uLong adler32_copy_avx2(iadler, buf, len, dest)
         do {
             __m256i srclo_0, srclo_1;
             __m256i adlerlo_0, adlerlo_1;
-            __m256i sum2lo_0, sum2lo_1, sum2lo_2, sum2lo_3;
-            __m256i sum2mul_0, sum2mul_1, sum2mul_2;
+            __m256i sum2lo_0, sum2lo_1;
 
             srclo_0   = _mm256_loadu_si256((const __m256i*)(buf +  0));
             srclo_1   = _mm256_loadu_si256((const __m256i*)(buf + 32));
 
-            sum2mul_0 = _mm256_sub_epi16(sum2mul, c_sum2add);
-            sum2mul_1 = _mm256_sub_epi16(sum2mul_0, c_sum2add);
-            sum2mul_2 = _mm256_sub_epi16(sum2mul_1, c_sum2add);
-            sum2mul   = _mm256_sub_epi16(sum2mul_2, c_sum2add);
+            sum2_acc = _mm256_add_epi32(sum2_acc, _mm256_slli_epi32(adler_acc, 6));
 
             _mm256_storeu_si256((__m256i*)(dest +  0), srclo_0);
             _mm256_storeu_si256((__m256i*)(dest + 32), srclo_1);
@@ -352,19 +331,14 @@ ZLIB_INTERNAL uLong adler32_copy_avx2(iadler, buf, len, dest)
             adlerlo_0 = _mm256_sad_epu8(srclo_0, c_zero); /* compute sums of elements in upper / lower qwords */
             adlerlo_1 = _mm256_sad_epu8(srclo_1, c_zero); /* compute sums of elements in upper / lower qwords */
 
-            sum2lo_0 = _mm256_cvtepu8_epi16(_mm256_castsi256_si128(srclo_0));
-            sum2lo_1 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(srclo_0, 1));
-            sum2lo_2 = _mm256_cvtepu8_epi16(_mm256_castsi256_si128(srclo_1));
-            sum2lo_3 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(srclo_1, 1));
-            sum2lo_0 = _mm256_madd_epi16(sum2lo_0, sum2mul_0);
-            sum2lo_1 = _mm256_madd_epi16(sum2lo_1, sum2mul_1);
-            sum2lo_2 = _mm256_madd_epi16(sum2lo_2, sum2mul_2);
-            sum2lo_3 = _mm256_madd_epi16(sum2lo_3, sum2mul);
+            sum2lo_0 = _mm256_maddubs_epi16(srclo_0, c_sum2mullo);
+            sum2lo_1 = _mm256_maddubs_epi16(srclo_1, c_sum2mulhi);
+
+            sum2lo_0 = _mm256_madd_epi16(sum2lo_0, one);
+            sum2lo_1 = _mm256_madd_epi16(sum2lo_1, one);
 
             adlerlo_0 = _mm256_add_epi32(adlerlo_0, adlerlo_1);
             sum2lo_0  = _mm256_add_epi32(sum2lo_0, sum2lo_1);
-            sum2lo_2  = _mm256_add_epi32(sum2lo_2, sum2lo_3);
-            sum2lo_0  = _mm256_add_epi32(sum2lo_0, sum2lo_2);
             adler_acc = _mm256_add_epi32(adler_acc, adlerlo_0);
             sum2_acc  = _mm256_add_epi32(sum2_acc, sum2lo_0);
 
@@ -386,8 +360,8 @@ ZLIB_INTERNAL uLong adler32_copy_avx2(iadler, buf, len, dest)
             sum2hi = _mm_srli_si128(sum2lo, 4);
             sum2lo = _mm_add_epi32(sum2lo, sum2hi); /* reduce to 1*32bits */
 
-            sum2  += NMAX * adler + (unsigned)_mm_cvtsi128_si32(sum2lo);
-            adler += (unsigned)_mm_cvtsi128_si32(adlerlo); /* Update adler sum */
+            sum2  = (unsigned)_mm_cvtsi128_si32(sum2lo);
+            adler = (unsigned)_mm_cvtsi128_si32(adlerlo); /* Update adler sum */
         }
 
         MOD(adler);
@@ -399,24 +373,19 @@ ZLIB_INTERNAL uLong adler32_copy_avx2(iadler, buf, len, dest)
         if (len >= 64) {
             __m256i adler_acc = _mm256_setzero_si256();
             __m256i sum2_acc  = _mm256_setzero_si256();
-            __m256i sum2mul   = _mm256_add_epi16(c_sum2mul, c_sum2add);
-            uInt len64 = len & ~(uInt)63U;
 
-            sum2mul = _mm256_sub_epi16(sum2mul, _mm256_set1_epi16(NMAX - len64));
+            adler_acc = _mm256_insert_epi32(adler_acc, adler, 0);
+            sum2_acc = _mm256_insert_epi32(sum2_acc, sum2, 0);
 
             do {
                 __m256i srclo_0, srclo_1;
                 __m256i adlerlo_0, adlerlo_1;
-                __m256i sum2lo_0, sum2lo_1, sum2lo_2, sum2lo_3;
-                __m256i sum2mul_0, sum2mul_1, sum2mul_2;
+                __m256i sum2lo_0, sum2lo_1;
 
                 srclo_0   = _mm256_loadu_si256((const __m256i*)(buf +  0));
                 srclo_1   = _mm256_loadu_si256((const __m256i*)(buf + 32));
 
-                sum2mul_0 = _mm256_sub_epi16(sum2mul, c_sum2add);
-                sum2mul_1 = _mm256_sub_epi16(sum2mul_0, c_sum2add);
-                sum2mul_2 = _mm256_sub_epi16(sum2mul_1, c_sum2add);
-                sum2mul   = _mm256_sub_epi16(sum2mul_2, c_sum2add);
+                sum2_acc = _mm256_add_epi32(sum2_acc, _mm256_slli_epi32(adler_acc, 6));
 
                 _mm256_storeu_si256((__m256i*)(dest +  0), srclo_0);
                 _mm256_storeu_si256((__m256i*)(dest + 32), srclo_1);
@@ -424,19 +393,14 @@ ZLIB_INTERNAL uLong adler32_copy_avx2(iadler, buf, len, dest)
                 adlerlo_0 = _mm256_sad_epu8(srclo_0, c_zero); /* compute sums of elements in upper / lower qwords */
                 adlerlo_1 = _mm256_sad_epu8(srclo_1, c_zero); /* compute sums of elements in upper / lower qwords */
 
-                sum2lo_0 = _mm256_cvtepu8_epi16(_mm256_castsi256_si128(srclo_0));
-                sum2lo_1 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(srclo_0, 1));
-                sum2lo_2 = _mm256_cvtepu8_epi16(_mm256_castsi256_si128(srclo_1));
-                sum2lo_3 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(srclo_1, 1));
-                sum2lo_0 = _mm256_madd_epi16(sum2lo_0, sum2mul_0);
-                sum2lo_1 = _mm256_madd_epi16(sum2lo_1, sum2mul_1);
-                sum2lo_2 = _mm256_madd_epi16(sum2lo_2, sum2mul_2);
-                sum2lo_3 = _mm256_madd_epi16(sum2lo_3, sum2mul);
+                sum2lo_0 = _mm256_maddubs_epi16(srclo_0, c_sum2mullo);
+                sum2lo_1 = _mm256_maddubs_epi16(srclo_1, c_sum2mulhi);
+
+                sum2lo_0 = _mm256_madd_epi16(sum2lo_0, one);
+                sum2lo_1 = _mm256_madd_epi16(sum2lo_1, one);
 
                 adlerlo_0 = _mm256_add_epi32(adlerlo_0, adlerlo_1);
                 sum2lo_0  = _mm256_add_epi32(sum2lo_0, sum2lo_1);
-                sum2lo_2  = _mm256_add_epi32(sum2lo_2, sum2lo_3);
-                sum2lo_0  = _mm256_add_epi32(sum2lo_0, sum2lo_2);
                 adler_acc = _mm256_add_epi32(adler_acc, adlerlo_0);
                 sum2_acc  = _mm256_add_epi32(sum2_acc, sum2lo_0);
 
@@ -458,8 +422,8 @@ ZLIB_INTERNAL uLong adler32_copy_avx2(iadler, buf, len, dest)
                 sum2hi = _mm_srli_si128(sum2lo, 4);
                 sum2lo = _mm_add_epi32(sum2lo, sum2hi); /* reduce to 1*32bits */
 
-                sum2  += len64 * adler + (unsigned)_mm_cvtsi128_si32(sum2lo);
-                adler += (unsigned)_mm_cvtsi128_si32(adlerlo); /* Update adler sum */
+                sum2  = (unsigned)_mm_cvtsi128_si32(sum2lo);
+                adler = (unsigned)_mm_cvtsi128_si32(adlerlo); /* Update adler sum */
             }
         }
         if (len & 32U) {

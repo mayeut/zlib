@@ -31,8 +31,8 @@ ZLIB_INTERNAL uLong adler32_sse2(iadler, buf, len)
     const __m128i c_zero   = _mm_setzero_si128();
     const __m128i c_sum2hi = _mm_set_epi16(1,  2,  3,  4,  5,  6,  7,  8); /* weighs for sum2 addend elements */
     const __m128i c_sum2lo = _mm_set_epi16(9, 10, 11, 12, 13, 14, 15, 16); /* weighs for sum2 addend elements */
-    const __m128i c_sum2mul = _mm_set_epi16(NMAX-7, NMAX-6, NMAX-5, NMAX-4, NMAX-3, NMAX-2, NMAX-1, NMAX);
-    const __m128i c_sum2add = _mm_set1_epi16(8);
+    const __m128i c_sum2hiprev = _mm_set_epi16(17, 18, 19, 20, 21, 22, 23, 24); /* weighs for sum2 addend elements */
+    const __m128i c_sum2loprev = _mm_set_epi16(25, 26, 27, 28, 29, 30, 31, 32); /* weighs for sum2 addend elements */
 
     /* split Adler-32 into component sums */
     sum2 = (adler >> 16) & 0xffffU;
@@ -79,9 +79,8 @@ ZLIB_INTERNAL uLong adler32_sse2(iadler, buf, len)
 
     /* do length NMAX blocks -- requires just one modulo operation */
     while (len >= NMAX) {
-        __m128i adler_acc = _mm_setzero_si128();
-        __m128i sum2_acc  = _mm_setzero_si128();
-        __m128i sum2mul   = _mm_add_epi16(c_sum2mul, c_sum2add);
+        __m128i adler_acc = _mm_cvtsi32_si128(adler);
+        __m128i sum2_acc  = _mm_cvtsi32_si128(sum2);
 
         len -= NMAX;
         n = NMAX / 32;          /* NMAX is divisible by 16 */
@@ -92,10 +91,11 @@ ZLIB_INTERNAL uLong adler32_sse2(iadler, buf, len)
             __m128i src_1;
             __m128i adlerlo_1;
             __m128i sum2lo_1, sum2hi_1;
-            __m128i sum2mul_0, sum2mul_1, sum2mul_2;
 
             src_0     = _mm_load_si128((const __m128i*)(buf +  0));
             src_1     = _mm_load_si128((const __m128i*)(buf + 16));
+
+            sum2_acc = _mm_add_epi32(sum2_acc, _mm_slli_epi32(adler_acc, 5));
 
             adlerlo_0 = _mm_sad_epu8(src_0, c_zero); /* compute sums of elements in upper / lower qwords */
             adlerlo_1 = _mm_sad_epu8(src_1, c_zero); /* compute sums of elements in upper / lower qwords */
@@ -105,15 +105,10 @@ ZLIB_INTERNAL uLong adler32_sse2(iadler, buf, len)
             sum2lo_1 = _mm_unpacklo_epi8(src_1, c_zero); /* convert lower 8*8bits to 8*16bits words */
             sum2hi_1 = _mm_unpackhi_epi8(src_1, c_zero); /* convert upper 8*8bits to 8*16bits words */
 
-            sum2mul_0 = _mm_sub_epi16(sum2mul, c_sum2add);
-            sum2mul_1 = _mm_sub_epi16(sum2mul_0, c_sum2add);
-            sum2mul_2 = _mm_sub_epi16(sum2mul_1, c_sum2add);
-            sum2mul   = _mm_sub_epi16(sum2mul_2, c_sum2add);
-
-            sum2lo_0 = _mm_madd_epi16(sum2lo_0, sum2mul_0);
-            sum2hi_0 = _mm_madd_epi16(sum2hi_0, sum2mul_1);
-            sum2lo_1 = _mm_madd_epi16(sum2lo_1, sum2mul_2);
-            sum2hi_1 = _mm_madd_epi16(sum2hi_1, sum2mul);
+            sum2lo_0 = _mm_madd_epi16(sum2lo_0, c_sum2loprev);
+            sum2hi_0 = _mm_madd_epi16(sum2hi_0, c_sum2hiprev);
+            sum2lo_1 = _mm_madd_epi16(sum2lo_1, c_sum2lo);
+            sum2hi_1 = _mm_madd_epi16(sum2hi_1, c_sum2hi);
 
             adlerlo_0 = _mm_add_epi32(adlerlo_0, adlerlo_1);
             sum2lo_0  = _mm_add_epi32(sum2lo_0, sum2hi_0);
@@ -136,8 +131,8 @@ ZLIB_INTERNAL uLong adler32_sse2(iadler, buf, len)
             sum2hi = _mm_srli_si128(sum2_acc, 4);
             sum2_acc = _mm_add_epi32(sum2_acc, sum2hi); /* reduce to 1*32bits */
 
-            sum2  += NMAX * adler + (unsigned)_mm_cvtsi128_si32(sum2_acc);
-            adler += (unsigned)_mm_cvtsi128_si32(adler_acc); /* Update adler sum */
+            sum2  = (unsigned)_mm_cvtsi128_si32(sum2_acc);
+            adler = (unsigned)_mm_cvtsi128_si32(adler_acc); /* Update adler sum */
         }
 
         MOD(adler);
@@ -147,12 +142,8 @@ ZLIB_INTERNAL uLong adler32_sse2(iadler, buf, len)
     /* do remaining bytes (less than NMAX, still just one modulo) */
     if (len) {                  /* avoid modulos if none remaining */
         if (len >= 32) {
-            __m128i adler_acc = _mm_setzero_si128();
-            __m128i sum2_acc  = _mm_setzero_si128();
-            __m128i sum2mul   = _mm_add_epi16(c_sum2mul, c_sum2add);
-            uInt len32 = len & ~(uInt)31U;
-
-            sum2mul = _mm_sub_epi16(sum2mul, _mm_set1_epi16(NMAX - len32));
+            __m128i adler_acc = _mm_cvtsi32_si128(adler);
+            __m128i sum2_acc  = _mm_cvtsi32_si128(sum2);
 
             do {
                 __m128i src_0;
@@ -161,10 +152,11 @@ ZLIB_INTERNAL uLong adler32_sse2(iadler, buf, len)
                 __m128i src_1;
                 __m128i adlerlo_1;
                 __m128i sum2lo_1, sum2hi_1;
-                __m128i sum2mul_0, sum2mul_1, sum2mul_2;
 
                 src_0     = _mm_load_si128((const __m128i*)(buf +  0));
                 src_1     = _mm_load_si128((const __m128i*)(buf + 16));
+
+                sum2_acc = _mm_add_epi32(sum2_acc, _mm_slli_epi32(adler_acc, 5));
 
                 adlerlo_0 = _mm_sad_epu8(src_0, c_zero); /* compute sums of elements in upper / lower qwords */
                 adlerlo_1 = _mm_sad_epu8(src_1, c_zero); /* compute sums of elements in upper / lower qwords */
@@ -174,15 +166,10 @@ ZLIB_INTERNAL uLong adler32_sse2(iadler, buf, len)
                 sum2lo_1 = _mm_unpacklo_epi8(src_1, c_zero); /* convert lower 8*8bits to 8*16bits words */
                 sum2hi_1 = _mm_unpackhi_epi8(src_1, c_zero); /* convert upper 8*8bits to 8*16bits words */
 
-                sum2mul_0 = _mm_sub_epi16(sum2mul, c_sum2add);
-                sum2mul_1 = _mm_sub_epi16(sum2mul_0, c_sum2add);
-                sum2mul_2 = _mm_sub_epi16(sum2mul_1, c_sum2add);
-                sum2mul   = _mm_sub_epi16(sum2mul_2, c_sum2add);
-
-                sum2lo_0 = _mm_madd_epi16(sum2lo_0, sum2mul_0);
-                sum2hi_0 = _mm_madd_epi16(sum2hi_0, sum2mul_1);
-                sum2lo_1 = _mm_madd_epi16(sum2lo_1, sum2mul_2);
-                sum2hi_1 = _mm_madd_epi16(sum2hi_1, sum2mul);
+                sum2lo_0 = _mm_madd_epi16(sum2lo_0, c_sum2loprev);
+                sum2hi_0 = _mm_madd_epi16(sum2hi_0, c_sum2hiprev);
+                sum2lo_1 = _mm_madd_epi16(sum2lo_1, c_sum2lo);
+                sum2hi_1 = _mm_madd_epi16(sum2hi_1, c_sum2hi);
 
                 adlerlo_0 = _mm_add_epi32(adlerlo_0, adlerlo_1);
                 sum2lo_0  = _mm_add_epi32(sum2lo_0, sum2hi_0);
@@ -205,8 +192,8 @@ ZLIB_INTERNAL uLong adler32_sse2(iadler, buf, len)
                 sum2hi = _mm_srli_si128(sum2_acc, 4);
                 sum2_acc = _mm_add_epi32(sum2_acc, sum2hi); /* reduce to 1*32bits */
 
-                sum2  += len32 * adler + (unsigned)_mm_cvtsi128_si32(sum2_acc);
-                adler += (unsigned)_mm_cvtsi128_si32(adler_acc); /* Update adler sum */
+                sum2  = (unsigned)_mm_cvtsi128_si32(sum2_acc);
+                adler = (unsigned)_mm_cvtsi128_si32(adler_acc); /* Update adler sum */
             }
         }
         if (len & 16U) {
@@ -254,8 +241,8 @@ ZLIB_INTERNAL uLong adler32_copy_sse2(iadler, buf, len, dest)
     const __m128i c_zero   = _mm_setzero_si128();
     const __m128i c_sum2hi = _mm_set_epi16(1,  2,  3,  4,  5,  6,  7,  8); /* weighs for sum2 addend elements */
     const __m128i c_sum2lo = _mm_set_epi16(9, 10, 11, 12, 13, 14, 15, 16); /* weighs for sum2 addend elements */
-    const __m128i c_sum2mul = _mm_set_epi16(NMAX-7, NMAX-6, NMAX-5, NMAX-4, NMAX-3, NMAX-2, NMAX-1, NMAX);
-    const __m128i c_sum2add = _mm_set1_epi16(8);
+    const __m128i c_sum2hiprev = _mm_set_epi16(17, 18, 19, 20, 21, 22, 23, 24); /* weighs for sum2 addend elements */
+    const __m128i c_sum2loprev = _mm_set_epi16(25, 26, 27, 28, 29, 30, 31, 32); /* weighs for sum2 addend elements */
 
     /* split Adler-32 into component sums */
     sum2 = (adler >> 16) & 0xffffU;
@@ -307,9 +294,8 @@ ZLIB_INTERNAL uLong adler32_copy_sse2(iadler, buf, len, dest)
 
     /* do length NMAX blocks -- requires just one modulo operation */
     while (len >= NMAX) {
-        __m128i adler_acc = _mm_setzero_si128();
-        __m128i sum2_acc  = _mm_setzero_si128();
-        __m128i sum2mul   = _mm_add_epi16(c_sum2mul, c_sum2add);
+        __m128i adler_acc = _mm_cvtsi32_si128(adler);
+        __m128i sum2_acc  = _mm_cvtsi32_si128(sum2);
 
         len -= NMAX;
         n = NMAX / 32;          /* NMAX is divisible by 16 */
@@ -320,13 +306,14 @@ ZLIB_INTERNAL uLong adler32_copy_sse2(iadler, buf, len, dest)
             __m128i src_1;
             __m128i adlerlo_1;
             __m128i sum2lo_1, sum2hi_1;
-            __m128i sum2mul_0, sum2mul_1, sum2mul_2;
 
             src_0     = _mm_load_si128((const __m128i*)(buf +  0));
             src_1     = _mm_load_si128((const __m128i*)(buf + 16));
 
             _mm_storeu_si128((__m128i*)(dest +  0), src_0);
             _mm_storeu_si128((__m128i*)(dest + 16), src_1);
+
+            sum2_acc = _mm_add_epi32(sum2_acc, _mm_slli_epi32(adler_acc, 5));
 
             adlerlo_0 = _mm_sad_epu8(src_0, c_zero); /* compute sums of elements in upper / lower qwords */
             adlerlo_1 = _mm_sad_epu8(src_1, c_zero); /* compute sums of elements in upper / lower qwords */
@@ -336,15 +323,10 @@ ZLIB_INTERNAL uLong adler32_copy_sse2(iadler, buf, len, dest)
             sum2lo_1 = _mm_unpacklo_epi8(src_1, c_zero); /* convert lower 8*8bits to 8*16bits words */
             sum2hi_1 = _mm_unpackhi_epi8(src_1, c_zero); /* convert upper 8*8bits to 8*16bits words */
 
-            sum2mul_0 = _mm_sub_epi16(sum2mul, c_sum2add);
-            sum2mul_1 = _mm_sub_epi16(sum2mul_0, c_sum2add);
-            sum2mul_2 = _mm_sub_epi16(sum2mul_1, c_sum2add);
-            sum2mul   = _mm_sub_epi16(sum2mul_2, c_sum2add);
-
-            sum2lo_0 = _mm_madd_epi16(sum2lo_0, sum2mul_0);
-            sum2hi_0 = _mm_madd_epi16(sum2hi_0, sum2mul_1);
-            sum2lo_1 = _mm_madd_epi16(sum2lo_1, sum2mul_2);
-            sum2hi_1 = _mm_madd_epi16(sum2hi_1, sum2mul);
+            sum2lo_0 = _mm_madd_epi16(sum2lo_0, c_sum2loprev);
+            sum2hi_0 = _mm_madd_epi16(sum2hi_0, c_sum2hiprev);
+            sum2lo_1 = _mm_madd_epi16(sum2lo_1, c_sum2lo);
+            sum2hi_1 = _mm_madd_epi16(sum2hi_1, c_sum2hi);
 
             adlerlo_0 = _mm_add_epi32(adlerlo_0, adlerlo_1);
             sum2lo_0  = _mm_add_epi32(sum2lo_0, sum2hi_0);
@@ -368,8 +350,8 @@ ZLIB_INTERNAL uLong adler32_copy_sse2(iadler, buf, len, dest)
             sum2hi = _mm_srli_si128(sum2_acc, 4);
             sum2_acc = _mm_add_epi32(sum2_acc, sum2hi); /* reduce to 1*32bits */
 
-            sum2  += NMAX * adler + (unsigned)_mm_cvtsi128_si32(sum2_acc);
-            adler += (unsigned)_mm_cvtsi128_si32(adler_acc); /* Update adler sum */
+            sum2  = (unsigned)_mm_cvtsi128_si32(sum2_acc);
+            adler = (unsigned)_mm_cvtsi128_si32(adler_acc); /* Update adler sum */
         }
 
         MOD(adler);
@@ -379,12 +361,8 @@ ZLIB_INTERNAL uLong adler32_copy_sse2(iadler, buf, len, dest)
     /* do remaining bytes (less than NMAX, still just one modulo) */
     if (len) {                  /* avoid modulos if none remaining */
         if (len >= 32) {
-            __m128i adler_acc = _mm_setzero_si128();
-            __m128i sum2_acc  = _mm_setzero_si128();
-            __m128i sum2mul   = _mm_add_epi16(c_sum2mul, c_sum2add);
-            uInt len32 = len & ~(uInt)31U;
-
-            sum2mul = _mm_sub_epi16(sum2mul, _mm_set1_epi16(NMAX - len32));
+            __m128i adler_acc = _mm_cvtsi32_si128(adler);
+            __m128i sum2_acc  = _mm_cvtsi32_si128(sum2);
 
             do {
                 __m128i src_0;
@@ -393,13 +371,14 @@ ZLIB_INTERNAL uLong adler32_copy_sse2(iadler, buf, len, dest)
                 __m128i src_1;
                 __m128i adlerlo_1;
                 __m128i sum2lo_1, sum2hi_1;
-                __m128i sum2mul_0, sum2mul_1, sum2mul_2;
 
                 src_0     = _mm_load_si128((const __m128i*)(buf +  0));
                 src_1     = _mm_load_si128((const __m128i*)(buf + 16));
 
                 _mm_storeu_si128((__m128i*)(dest +  0), src_0);
                 _mm_storeu_si128((__m128i*)(dest + 16), src_1);
+
+                sum2_acc = _mm_add_epi32(sum2_acc, _mm_slli_epi32(adler_acc, 5));
 
                 adlerlo_0 = _mm_sad_epu8(src_0, c_zero); /* compute sums of elements in upper / lower qwords */
                 adlerlo_1 = _mm_sad_epu8(src_1, c_zero); /* compute sums of elements in upper / lower qwords */
@@ -409,15 +388,10 @@ ZLIB_INTERNAL uLong adler32_copy_sse2(iadler, buf, len, dest)
                 sum2lo_1 = _mm_unpacklo_epi8(src_1, c_zero); /* convert lower 8*8bits to 8*16bits words */
                 sum2hi_1 = _mm_unpackhi_epi8(src_1, c_zero); /* convert upper 8*8bits to 8*16bits words */
 
-                sum2mul_0 = _mm_sub_epi16(sum2mul, c_sum2add);
-                sum2mul_1 = _mm_sub_epi16(sum2mul_0, c_sum2add);
-                sum2mul_2 = _mm_sub_epi16(sum2mul_1, c_sum2add);
-                sum2mul   = _mm_sub_epi16(sum2mul_2, c_sum2add);
-
-                sum2lo_0 = _mm_madd_epi16(sum2lo_0, sum2mul_0);
-                sum2hi_0 = _mm_madd_epi16(sum2hi_0, sum2mul_1);
-                sum2lo_1 = _mm_madd_epi16(sum2lo_1, sum2mul_2);
-                sum2hi_1 = _mm_madd_epi16(sum2hi_1, sum2mul);
+                sum2lo_0 = _mm_madd_epi16(sum2lo_0, c_sum2loprev);
+                sum2hi_0 = _mm_madd_epi16(sum2hi_0, c_sum2hiprev);
+                sum2lo_1 = _mm_madd_epi16(sum2lo_1, c_sum2lo);
+                sum2hi_1 = _mm_madd_epi16(sum2hi_1, c_sum2hi);
 
                 adlerlo_0 = _mm_add_epi32(adlerlo_0, adlerlo_1);
                 sum2lo_0  = _mm_add_epi32(sum2lo_0, sum2hi_0);
@@ -441,8 +415,8 @@ ZLIB_INTERNAL uLong adler32_copy_sse2(iadler, buf, len, dest)
                 sum2hi = _mm_srli_si128(sum2_acc, 4);
                 sum2_acc = _mm_add_epi32(sum2_acc, sum2hi); /* reduce to 1*32bits */
 
-                sum2  += len32 * adler + (unsigned)_mm_cvtsi128_si32(sum2_acc);
-                adler += (unsigned)_mm_cvtsi128_si32(adler_acc); /* Update adler sum */
+                sum2  = (unsigned)_mm_cvtsi128_si32(sum2_acc);
+                adler = (unsigned)_mm_cvtsi128_si32(adler_acc); /* Update adler sum */
             }
         }
         if (len & 16U) {
